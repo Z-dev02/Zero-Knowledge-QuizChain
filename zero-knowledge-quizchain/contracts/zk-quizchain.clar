@@ -309,3 +309,110 @@
         (ok true)
     )
 )
+
+(define-public (add-reward-to-quiz (quiz-id uint) (amount uint))
+    (let
+        ((quiz (unwrap! (map-get? quizzes quiz-id) err-not-found)))
+        (asserts! (is-eq tx-sender (get creator quiz)) err-not-authorized)
+        (try! (stx-transfer? amount tx-sender (as-contract tx-sender)))
+        (map-set quizzes quiz-id (merge quiz {reward-pool: (+ (get reward-pool quiz) amount)}))
+        (ok true)
+    )
+)
+
+(define-public (claim-reward (quiz-id uint))
+    (let
+        ((quiz (unwrap! (map-get? quizzes quiz-id) err-not-found))
+         (cert (unwrap! (map-get? certifications {quiz-id: quiz-id, participant: tx-sender}) err-not-found))
+         (reward-amount (/ (get reward-pool quiz) u10))
+         (current-stats (default-to {total-attempts: u0, total-passed: u0, total-certifications: u0, total-rewards: u0, reputation-score: u0}
+                                    (map-get? participant-stats tx-sender))))
+        (asserts! (get certified cert) err-not-authorized)
+        (asserts! (> (get reward-pool quiz) u0) err-insufficient-balance)
+        (try! (as-contract (stx-transfer? reward-amount tx-sender (get participant (unwrap-panic (map-get? quiz-attempts (get attempt-id cert)))))))
+        (map-set quizzes quiz-id (merge quiz {reward-pool: (- (get reward-pool quiz) reward-amount)}))
+        (map-set participant-stats tx-sender (merge current-stats {
+            total-rewards: (+ (get total-rewards current-stats) reward-amount)
+        }))
+        (ok reward-amount)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (update-leaderboard (quiz-id uint) (rank uint) (participant principal) (score uint))
+    (let
+        ((quiz (unwrap! (map-get? quizzes quiz-id) err-not-found)))
+        (asserts! (is-eq tx-sender (get creator quiz)) err-not-authorized)
+        (map-set leaderboard {quiz-id: quiz-id, rank: rank}
+            {participant: participant, score: score, timestamp: stacks-block-height})
+        (ok true)
+    )
+)
+
+(define-public (activate-quiz (quiz-id uint))
+    (let
+        ((quiz (unwrap! (map-get? quizzes quiz-id) err-not-found)))
+        (asserts! (is-eq tx-sender (get creator quiz)) err-not-authorized)
+        (map-set quizzes quiz-id (merge quiz {active: true}))
+        (ok true)
+    )
+)
+
+(define-public (update-quiz-description (quiz-id uint) (new-description (string-ascii 300)))
+    (let
+        ((quiz (unwrap! (map-get? quizzes quiz-id) err-not-found)))
+        (asserts! (is-eq tx-sender (get creator quiz)) err-not-authorized)
+        (map-set quizzes quiz-id (merge quiz {description: new-description}))
+        (ok true)
+    )
+)
+
+(define-public (update-passing-score (quiz-id uint) (new-score uint))
+    (let
+        ((quiz (unwrap! (map-get? quizzes quiz-id) err-not-found)))
+        (asserts! (is-eq tx-sender (get creator quiz)) err-not-authorized)
+        (asserts! (<= new-score u100) err-invalid-score)
+        (map-set quizzes quiz-id (merge quiz {passing-score: new-score}))
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (set-platform-fee (new-fee uint))
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (var-set platform-fee new-fee)
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (toggle-category (category (string-ascii 50)) (active bool))
+    (let
+        ((cat-stats (unwrap! (map-get? quiz-categories category) err-not-found)))
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (map-set quiz-categories category (merge cat-stats {active: active}))
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (revoke-certification (quiz-id uint) (participant principal))
+    (let
+        ((quiz (unwrap! (map-get? quizzes quiz-id) err-not-found))
+         (cert (unwrap! (map-get? certifications {quiz-id: quiz-id, participant: participant}) err-not-found)))
+        (asserts! (is-eq tx-sender (get creator quiz)) err-not-authorized)
+        (map-set certifications {quiz-id: quiz-id, participant: participant}
+            (merge cert {certified: false}))
+        (ok true)
+    )
+)
+
+(define-public (deactivate-quiz (quiz-id uint))
+    (let
+        ((quiz (unwrap! (map-get? quizzes quiz-id) err-not-found)))
+        (asserts! (is-eq tx-sender (get creator quiz)) err-not-authorized)
+        (map-set quizzes quiz-id (merge quiz {active: false}))
+        (ok true)
+    )
+)
