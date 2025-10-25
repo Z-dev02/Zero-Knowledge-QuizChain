@@ -109,3 +109,66 @@
         active: bool
     }
 )
+
+;; Read-only functions
+(define-read-only (get-quiz (quiz-id uint))
+    (map-get? quizzes quiz-id)
+)
+
+(define-read-only (get-attempt (attempt-id uint))
+    (map-get? quiz-attempts attempt-id)
+)
+
+(define-read-only (get-certification (quiz-id uint) (participant principal))
+    (map-get? certifications {quiz-id: quiz-id, participant: participant})
+)
+
+(define-read-only (get-participant-attempts (quiz-id uint) (participant principal))
+    (default-to (list) (map-get? participant-attempts {quiz-id: quiz-id, participant: participant}))
+)
+
+(define-read-only (get-next-quiz-id)
+    (var-get quiz-id-nonce)
+)
+
+(define-read-only (get-participant-stats (participant principal))
+    (map-get? participant-stats participant)
+)
+
+(define-read-only (get-quiz-rating (quiz-id uint) (participant principal))
+    (map-get? quiz-ratings {quiz-id: quiz-id, participant: participant})
+)
+
+(define-read-only (get-leaderboard-entry (quiz-id uint) (rank uint))
+    (map-get? leaderboard {quiz-id: quiz-id, rank: rank})
+)
+
+(define-read-only (get-category-stats (category (string-ascii 50)))
+    (map-get? quiz-categories category)
+)
+
+(define-read-only (get-platform-fee)
+    (ok (var-get platform-fee))
+)
+
+(define-read-only (get-total-participants)
+    (ok (var-get total-participants))
+)
+
+(define-read-only (get-total-certifications)
+    (ok (var-get total-certifications))
+)
+
+(define-read-only (is-quiz-creator (quiz-id uint) (user principal))
+    (match (map-get? quizzes quiz-id)
+        quiz (ok (is-eq user (get creator quiz)))
+        (ok false)
+    )
+)
+
+(define-read-only (has-certification (quiz-id uint) (participant principal))
+    (match (map-get? certifications {quiz-id: quiz-id, participant: participant})
+        cert (ok (get certified cert))
+        (ok false)
+    )
+)
