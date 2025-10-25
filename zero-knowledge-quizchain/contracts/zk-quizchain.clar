@@ -19,3 +19,93 @@
 (define-constant difficulty-intermediate u2)
 (define-constant difficulty-advanced u3)
 (define-constant difficulty-expert u4)
+
+;; Data Variables
+(define-data-var quiz-id-nonce uint u0)
+(define-data-var attempt-id-nonce uint u0)
+(define-data-var total-participants uint u0)
+(define-data-var total-certifications uint u0)
+(define-data-var platform-fee uint u100000) ;; 0.1 STX in microstacks
+
+;; Data Maps
+(define-map quizzes
+    uint
+    {
+        creator: principal,
+        title: (string-ascii 100),
+        description: (string-ascii 300),
+        quiz-hash: (buff 32),
+        passing-score: uint,
+        total-questions: uint,
+        active: bool,
+        difficulty: uint,
+        category: (string-ascii 50),
+        reward-pool: uint,
+        total-attempts: uint,
+        average-score: uint
+    }
+)
+
+(define-map quiz-attempts
+    uint
+    {
+        quiz-id: uint,
+        participant: principal,
+        proof-hash: (buff 32),
+        score: uint,
+        passed: bool,
+        timestamp: uint,
+        verified: bool
+    }
+)
+
+(define-map participant-attempts
+    {quiz-id: uint, participant: principal}
+    (list 10 uint)
+)
+
+(define-map certifications
+    {quiz-id: uint, participant: principal}
+    {
+        attempt-id: uint,
+        certified: bool,
+        cert-date: uint
+    }
+)
+
+(define-map quiz-ratings
+    {quiz-id: uint, participant: principal}
+    {
+        rating: uint,
+        feedback: (string-ascii 200)
+    }
+)
+
+(define-map participant-stats
+    principal
+    {
+        total-attempts: uint,
+        total-passed: uint,
+        total-certifications: uint,
+        total-rewards: uint,
+        reputation-score: uint
+    }
+)
+
+(define-map leaderboard
+    {quiz-id: uint, rank: uint}
+    {
+        participant: principal,
+        score: uint,
+        timestamp: uint
+    }
+)
+
+(define-map quiz-categories
+    (string-ascii 50)
+    {
+        total-quizzes: uint,
+        total-participants: uint,
+        active: bool
+    }
+)
