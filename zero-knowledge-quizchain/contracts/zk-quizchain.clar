@@ -172,3 +172,140 @@
         (ok false)
     )
 )
+
+;; Public functions
+;; #[allow(unchecked_data)]
+(define-public (create-quiz 
+    (title (string-ascii 100))
+    (description (string-ascii 300))
+    (quiz-hash (buff 32))
+    (passing-score uint)
+    (total-questions uint)
+    (difficulty uint)
+    (category (string-ascii 50)))
+    (let
+        ((new-id (var-get quiz-id-nonce)))
+        (asserts! (<= passing-score u100) err-invalid-score)
+        (asserts! (and (>= difficulty difficulty-beginner) (<= difficulty difficulty-expert)) err-invalid-difficulty)
+        (map-set quizzes new-id
+            {
+                creator: tx-sender,
+                title: title,
+                description: description,
+                quiz-hash: quiz-hash,
+                passing-score: passing-score,
+                total-questions: total-questions,
+                active: true,
+                difficulty: difficulty,
+                category: category,
+                reward-pool: u0,
+                total-attempts: u0,
+                average-score: u0
+            }
+        )
+        ;; Update category stats
+        (match (map-get? quiz-categories category)
+            cat-stats (map-set quiz-categories category 
+                (merge cat-stats {total-quizzes: (+ (get total-quizzes cat-stats) u1)}))
+            (map-set quiz-categories category {total-quizzes: u1, total-participants: u0, active: true})
+        )
+        (var-set quiz-id-nonce (+ new-id u1))
+        (ok new-id)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (submit-quiz-attempt (quiz-id uint) (proof-hash (buff 32)) (score uint))
+    (let
+        ((quiz (unwrap! (map-get? quizzes quiz-id) err-not-found))
+         (new-attempt-id (var-get attempt-id-nonce))
+         (attempts (get-participant-attempts quiz-id tx-sender))
+         (passed (>= score (get passing-score quiz)))
+         (current-stats (default-to {total-attempts: u0, total-passed: u0, total-certifications: u0, total-rewards: u0, reputation-score: u0}
+                                    (map-get? participant-stats tx-sender)))
+         (total-att (get total-attempts quiz))
+         (avg-score (get average-score quiz))
+         (new-avg (/ (+ (* avg-score total-att) score) (+ total-att u1))))
+        (asserts! (get active quiz) err-quiz-inactive)
+        (asserts! (<= score u100) err-invalid-score)
+        
+        ;; Record attempt
+        (map-set quiz-attempts new-attempt-id
+            {
+                quiz-id: quiz-id,
+                participant: tx-sender,
+                proof-hash: proof-hash,
+                score: score,
+                passed: passed,
+                timestamp: stacks-block-height,
+                verified: false
+            }
+        )
+        
+        ;; Update participant attempts
+        (map-set participant-attempts 
+            {quiz-id: quiz-id, participant: tx-sender}
+            (unwrap-panic (as-max-len? (append attempts new-attempt-id) u10))
+        )
+        
+        ;; Update quiz stats
+        (map-set quizzes quiz-id (merge quiz {
+            total-attempts: (+ total-att u1),
+            average-score: new-avg
+        }))
+        
+        ;; Update participant stats
+        (map-set participant-stats tx-sender (merge current-stats {
+            total-attempts: (+ (get total-attempts current-stats) u1),
+            total-passed: (if passed (+ (get total-passed current-stats) u1) (get total-passed current-stats))
+        }))
+        
+        (var-set attempt-id-nonce (+ new-attempt-id u1))
+        (ok new-attempt-id)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (verify-attempt (attempt-id uint))
+    (let
+        ((attempt (unwrap! (map-get? quiz-attempts attempt-id) err-not-found))
+         (quiz (unwrap! (map-get? quizzes (get quiz-id attempt)) err-not-found))
+         (participant (get participant attempt))
+         (current-stats (default-to {total-attempts: u0, total-passed: u0, total-certifications: u0, total-rewards: u0, reputation-score: u0}
+                                    (map-get? participant-stats participant))))
+        (asserts! (is-eq tx-sender (get creator quiz)) err-not-authorized)
+        (map-set quiz-attempts attempt-id (merge attempt {verified: true}))
+        (if (get passed attempt)
+            (begin
+                (map-set certifications 
+                    {quiz-id: (get quiz-id attempt), participant: participant}
+                    {
+                        attempt-id: attempt-id,
+                        certified: true,
+                        cert-date: stacks-block-height
+                    }
+                )
+                ;; Update participant stats
+                (map-set participant-stats participant (merge current-stats {
+                    total-certifications: (+ (get total-certifications current-stats) u1),
+                    reputation-score: (+ (get reputation-score current-stats) u10)
+                }))
+                (var-set total-certifications (+ (var-get total-certifications) u1))
+            )
+            true
+        )
+        (ok true)
+    )
+)
+
+;; #[allow(unchecked_data)]
+(define-public (rate-quiz (quiz-id uint) (rating uint) (feedback (string-ascii 200)))
+    (let
+        ((quiz (unwrap! (map-get? quizzes quiz-id) err-not-found)))
+        (asserts! (<= rating u5) err-invalid-score)
+        (asserts! (is-none (map-get? quiz-ratings {quiz-id: quiz-id, participant: tx-sender})) err-already-rated)
+        (map-set quiz-ratings {quiz-id: quiz-id, participant: tx-sender}
+            {rating: rating, feedback: feedback})
+        (ok true)
+    )
+)
